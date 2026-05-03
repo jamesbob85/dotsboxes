@@ -11,6 +11,10 @@ export default function HUD({ state, onReset }: Props) {
   const winnerIds = isOver ? winners(state) : []
   const totalBoxes = state.size * state.size
   const claimed = state.boxOwner.size
+  const showExtraTurn =
+    !isOver &&
+    state.lastCapturedBy !== null &&
+    state.lastCapturedBy === state.current
 
   return (
     <>
@@ -29,6 +33,9 @@ export default function HUD({ state, onReset }: Props) {
               <span style={{ ...swatchStyle, background: p.color }} />
               <span style={nameStyle}>{p.name}</span>
               <span style={scoreStyle}>{state.scores[i]}</span>
+              {active && showExtraTurn && (
+                <span style={{ ...extraTurnStyle, background: p.color }}>+1 GO AGAIN</span>
+              )}
             </div>
           )
         })}
@@ -173,4 +180,14 @@ const buttonStyle: React.CSSProperties = {
   fontSize: 15,
   fontWeight: 700,
   cursor: 'pointer',
+}
+
+const extraTurnStyle: React.CSSProperties = {
+  color: '#fff',
+  fontSize: 11,
+  fontWeight: 800,
+  letterSpacing: 0.5,
+  borderRadius: 999,
+  padding: '3px 8px',
+  marginLeft: 4,
 }

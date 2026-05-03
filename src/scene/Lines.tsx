@@ -4,12 +4,11 @@ import { decodeLine, encodeLine } from '../engine/moves'
 import { hLineCenter, vLineCenter } from './coords'
 
 const LINE_LEN = 0.96
-const LINE_THICK = 0.13
-const LINE_HEIGHT = 0.09
-const LINE_Y = 0.06
+const LINE_THICK = 0.14
+const LINE_Y = 0.03
 
-const HIT_THICK = 0.35
-const HIT_HEIGHT = 0.25
+const HIT_THICK = 0.4
+const HIT_HEIGHT = 0.4
 
 interface Props {
   state: GameState
@@ -65,12 +64,15 @@ export default function Lines({ state, onClick, isHumanTurn, currentColor }: Pro
 function DrawnLine({ id, size, color }: { id: LineId; size: number; color: string }) {
   const { kind, r, c } = decodeLine(id)
   const pos = kind === 'h' ? hLineCenter(size, r, c) : vLineCenter(size, r, c)
-  const args: [number, number, number] =
-    kind === 'h' ? [LINE_LEN, LINE_HEIGHT, LINE_THICK] : [LINE_THICK, LINE_HEIGHT, LINE_LEN]
+  const args: [number, number] =
+    kind === 'h' ? [LINE_LEN, LINE_THICK] : [LINE_THICK, LINE_LEN]
   return (
-    <mesh position={[pos[0], LINE_Y, pos[2]]} castShadow receiveShadow>
-      <boxGeometry args={args} />
-      <meshStandardMaterial color={color} roughness={0.6} />
+    <mesh
+      position={[pos[0], LINE_Y, pos[2]]}
+      rotation={[-Math.PI / 2, 0, 0]}
+    >
+      <planeGeometry args={args} />
+      <meshBasicMaterial color={color} />
     </mesh>
   )
 }
@@ -93,25 +95,21 @@ function UndrawnLine({
   const [hover, setHover] = useState(false)
   const showHover = hover && interactive
 
-  const previewArgs: [number, number, number] =
-    kind === 'h' ? [LINE_LEN, LINE_HEIGHT, LINE_THICK] : [LINE_THICK, LINE_HEIGHT, LINE_LEN]
+  const previewArgs: [number, number] =
+    kind === 'h' ? [LINE_LEN, LINE_THICK] : [LINE_THICK, LINE_LEN]
   const hitArgs: [number, number, number] =
     kind === 'h' ? [LINE_LEN, HIT_HEIGHT, HIT_THICK] : [HIT_THICK, HIT_HEIGHT, LINE_LEN]
 
   return (
-    <group position={[pos[0], LINE_Y, pos[2]]}>
+    <group position={[pos[0], 0, pos[2]]}>
       {showHover && (
-        <mesh>
-          <boxGeometry args={previewArgs} />
-          <meshStandardMaterial
-            color={previewColor}
-            transparent
-            opacity={0.6}
-            roughness={0.7}
-          />
+        <mesh position={[0, LINE_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={previewArgs} />
+          <meshBasicMaterial color={previewColor} transparent opacity={0.45} />
         </mesh>
       )}
       <mesh
+        position={[0, HIT_HEIGHT / 2, 0]}
         onPointerOver={(e) => {
           if (!interactive) return
           e.stopPropagation()
