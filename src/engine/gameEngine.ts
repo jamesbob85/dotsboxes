@@ -124,14 +124,21 @@ function findEnclosedComponents(
     .map((c) => c.cells)
 }
 
-// Plot dimensions eligible for auto-merge upgrade (≥2×2). Largest-first so
-// a 3×3 vineyard merge wins over its constituent 2×2 pig.
-const MERGE_DIMS: Array<[number, number]> = [
-  [3, 3],
-  [2, 3],
-  [3, 2],
-  [2, 2],
-]
+// Plot dimensions eligible for auto-merge upgrade. Includes any rectangle
+// up to grid size with ≥2 cells, so a 1×4 row of chickens is just as good
+// as a 2×2 square once merged. Computed per-call since size varies.
+function buildMergeDims(size: number): Array<[number, number]> {
+  const dims: Array<[number, number]> = []
+  for (let h = 1; h <= size; h++) {
+    for (let w = 1; w <= size; w++) {
+      if (h * w < 2) continue
+      dims.push([h, w])
+    }
+  }
+  // Largest area first so the greediest upgrade wins.
+  dims.sort((a, b) => b[0] * b[1] - a[0] * a[1])
+  return dims
+}
 
 function findPlotIdForCell(
   plots: Map<PlotId, Plot>,
@@ -164,8 +171,9 @@ function tryMergePlots(
 ): { plots: Map<PlotId, Plot>; changed: boolean } {
   const result = new Map(plots)
   let changed = false
+  const dims = buildMergeDims(size)
 
-  for (const [h, w] of MERGE_DIMS) {
+  for (const [h, w] of dims) {
     for (let r0 = 0; r0 + h <= size; r0++) {
       for (let c0 = 0; c0 + w <= size; c0++) {
         const cells = plotCells(r0, c0, h, w)

@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Mesh, MeshBasicMaterial } from 'three'
 import { GameState, LineId } from '../engine/types'
-import { decodeLine, encodeLine } from '../engine/moves'
+import { decodeLine, encodeLine, isInteriorToAnyPlot } from '../engine/moves'
 import { hLineCenter, vLineCenter } from './coords'
 
 const LINE_LEN = 0.96
@@ -30,17 +30,17 @@ export default function Lines({ state, onClick, isHumanTurn, currentColor }: Pro
     for (let r = 0; r <= N; r++) {
       for (let c = 0; c < N; c++) {
         const id = encodeLine('h', r, c)
-        if (!state.lines.has(id)) out.push(id)
+        if (!state.lines.has(id) && !isInteriorToAnyPlot(state, id)) out.push(id)
       }
     }
     for (let r = 0; r < N; r++) {
       for (let c = 0; c <= N; c++) {
         const id = encodeLine('v', r, c)
-        if (!state.lines.has(id)) out.push(id)
+        if (!state.lines.has(id) && !isInteriorToAnyPlot(state, id)) out.push(id)
       }
     }
     return out
-  }, [state.lines, state.size])
+  }, [state])
 
   return (
     <>

@@ -7,26 +7,24 @@ export const ASSET_EMOJI: Record<AssetType, string> = {
   chicken: '🐔',
 }
 
+// Asset tier and yield are determined by cell count, not shape — so a 1×4
+// run is the same value as a 2×2 once merged.
+//   1–3 cells → chicken, 1 yield per cell
+//   4–5 cells → pig, 6 yield
+//   6–8 cells → cow, 12 yield
+//   9+ cells  → vineyard, 24 yield
 export function pickBestAsset(h: number, w: number): AssetType {
-  if (h === 3 && w === 3) return 'vineyard'
-  if ((h === 2 && w === 3) || (h === 3 && w === 2)) return 'cow'
-  if (h === 2 && w === 2) return 'pig'
+  const cells = h * w
+  if (cells >= 9) return 'vineyard'
+  if (cells >= 6) return 'cow'
+  if (cells >= 4) return 'pig'
   return 'chicken'
 }
 
-// Yield per harvest tick.
-// Scales linearly with cells for chicken (so a 1×3 chicken plot yields 3,
-// matching what three separate 1×1 chickens would produce). Pig/cow/vineyard
-// have higher per-cell density, rewarding successful big-plot captures.
-export function assetYield(asset: AssetType, h: number, w: number): number {
-  switch (asset) {
-    case 'vineyard':
-      return 24
-    case 'cow':
-      return 12
-    case 'pig':
-      return 6
-    case 'chicken':
-      return h * w
-  }
+export function assetYield(_asset: AssetType, h: number, w: number): number {
+  const cells = h * w
+  if (cells >= 9) return 24
+  if (cells >= 6) return 12
+  if (cells >= 4) return 6
+  return cells
 }

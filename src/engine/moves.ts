@@ -1,4 +1,4 @@
-import { GameState, LineId, BoxId, LineKind, PlotId } from './types'
+import { GameState, LineId, BoxId, LineKind, PlotId, Plot } from './types'
 
 export const MAX_PLOT_DIM = 3
 
@@ -31,7 +31,43 @@ export function isLineInBounds(size: number, id: LineId): boolean {
 }
 
 export function isValidMove(state: GameState, id: LineId): boolean {
-  return isLineInBounds(state.size, id) && !state.lines.has(id)
+  return (
+    isLineInBounds(state.size, id) &&
+    !state.lines.has(id) &&
+    !isInteriorToAnyPlot(state, id)
+  )
+}
+
+function plotContainingCell(plots: Map<PlotId, Plot>, r: number, c: number): PlotId | null {
+  for (const [id, plot] of plots) {
+    if (r >= plot.r0 && r < plot.r0 + plot.h && c >= plot.c0 && c < plot.c0 + plot.w) {
+      return id
+    }
+  }
+  return null
+}
+
+// True when both cells flanking the line are in the same plot — drawing the
+// line would split a captured area and is disallowed.
+export function isInteriorToAnyPlot(state: GameState, id: LineId): boolean {
+  const { kind, r, c } = decodeLine(id)
+  let aR: number, aC: number, bR: number, bC: number
+  if (kind === 'h') {
+    aR = r - 1
+    aC = c
+    bR = r
+    bC = c
+  } else {
+    aR = r
+    aC = c - 1
+    bR = r
+    bC = c
+  }
+  if (aR < 0 || bR >= state.size || aC < 0 || bC >= state.size) return false
+  const plotA = plotContainingCell(state.plots, aR, aC)
+  if (plotA === null) return false
+  const plotB = plotContainingCell(state.plots, bR, bC)
+  return plotA === plotB
 }
 
 export function validMoves(state: GameState): LineId[] {
@@ -40,13 +76,13 @@ export function validMoves(state: GameState): LineId[] {
   for (let r = 0; r <= N; r++) {
     for (let c = 0; c < N; c++) {
       const id = encodeLine('h', r, c)
-      if (!state.lines.has(id)) out.push(id)
+      if (!state.lines.has(id) && !isInteriorToAnyPlot(state, id)) out.push(id)
     }
   }
   for (let r = 0; r < N; r++) {
     for (let c = 0; c <= N; c++) {
       const id = encodeLine('v', r, c)
-      if (!state.lines.has(id)) out.push(id)
+      if (!state.lines.has(id) && !isInteriorToAnyPlot(state, id)) out.push(id)
     }
   }
   return out

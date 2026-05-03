@@ -7,6 +7,7 @@ import {
 } from '../src/engine/gameEngine'
 import {
   encodeLine,
+  isInteriorToAnyPlot,
   validMoves,
   boxSides,
   plotPerimeter,
@@ -359,6 +360,51 @@ describe('per-turn harvest (baked into applyMove)', () => {
   })
 })
 
+describe('no fence inside a claimed plot', () => {
+  it('cannot draw an interior line of an existing pig', () => {
+    let s = initState(3, PLAYERS)
+    for (const id of plotPerimeter(0, 0, 2, 2)) s = applyMove(s, id)
+    expect(Array.from(s.plots.values())[0].asset).toBe('pig')
+    const before = s
+    s = applyMove(s, encodeLine('h', 1, 0)) // interior of the pig
+    expect(s).toBe(before)
+  })
+
+  it('validMoves excludes lines interior to a plot', () => {
+    let s = initState(3, PLAYERS)
+    for (const id of plotPerimeter(0, 0, 2, 2)) s = applyMove(s, id)
+    const moves = validMoves(s)
+    for (const interior of [
+      encodeLine('h', 1, 0),
+      encodeLine('h', 1, 1),
+      encodeLine('v', 0, 1),
+      encodeLine('v', 1, 1),
+    ]) {
+      expect(moves).not.toContain(interior)
+    }
+  })
+
+  it('lines on the boundary between two plots are NOT considered interior', () => {
+    // Build two adjacent 1×1 chicken plots owned by different players, with
+    // the wall between them already drawn. That wall is the boundary of
+    // both plots, not interior to either — but it's already drawn, so it
+    // wouldn't be in validMoves anyway. Verify isInteriorToAnyPlot
+    // returns false on the line.
+    let s = initState(3, PLAYERS)
+    s = applyMove(s, encodeLine('h', 0, 0)) // P0
+    s = applyMove(s, encodeLine('h', 1, 0)) // P1
+    s = applyMove(s, encodeLine('v', 0, 0)) // P0
+    s = applyMove(s, encodeLine('h', 0, 1)) // P1
+    s = applyMove(s, encodeLine('v', 0, 1)) // P0 captures (0,0)
+    s = applyMove(s, encodeLine('h', 1, 1)) // P0 (extra)
+    s = applyMove(s, encodeLine('v', 0, 2)) // P1 captures (0,1)
+    expect(s.plots.size).toBe(2)
+    // Wall between the two plots: v:0:1
+    // It's drawn already, but isInteriorToAnyPlot should be false anyway.
+    expect(isInteriorToAnyPlot(s, encodeLine('v', 0, 1))).toBe(false)
+  })
+})
+
 describe('auto-merge plots', () => {
   it('4 same-owner chickens in a 2x2 area merge into a pig', () => {
     // Setup: gridded 2x2 (all internal walls) plus perimeter so each cell
@@ -411,12 +457,53 @@ describe('auto-merge plots', () => {
   })
 
   it('does not downgrade an existing pig', () => {
-    // Capture a 2×2 directly as pig; subsequent moves shouldn't degrade it.
     let s = initState(3, PLAYERS)
     for (const id of plotPerimeter(0, 0, 2, 2)) s = applyMove(s, id)
     expect(Array.from(s.plots.values())[0].asset).toBe('pig')
-    // Continue playing; the pig should stay a pig.
     s = applyMove(s, encodeLine('h', 0, 2))
     expect(Array.from(s.plots.values()).find((p) => p.r0 === 0 && p.c0 === 0)?.asset).toBe('pig')
+  })
+
+  it('1x4 row of same-owner chickens merges to pig-tier yield', () => {
+    // Move ordering matters: we want all 4 cells captured by ONE player on
+    // a chained extra-turn streak. Draw all horizontals first, then alternate
+    // verticals so the first capture happens at v:0:2 (captures 2 cells)
+    // and subsequent captures all happen as extra turns of that same player.
+    let s = initState(4, PLAYERS)
+    for (let c = 0; c < 4; c++) {
+      s = applyMove(s, encodeLine('h', 0, c))
+      s = applyMove(s, encodeLine('h', 1, c))
+    }
+    s = applyMove(s, encodeLine('v', 0, 1))
+    s = applyMove(s, encodeLine('v', 0, 3))
+    s = applyMove(s, encodeLine('v', 0, 2)) // captures (0,1)+(0,2) — extra turn
+    s = applyMove(s, encodeLine('v', 0, 0)) // captures (0,0) — extra turn
+    s = applyMove(s, encodeLine('v', 0, 4)) // captures (0,3) — merge to 1×4 pig
+    expect(s.boxOwner.size).toBe(4)
+    expect(s.plots.size).toBe(1)
+    const p = Array.from(s.plots.values())[0]
+    expect(p.asset).toBe('pig')
+    expect(p.h * p.w).toBe(4)
+    expect(p.h === 1 || p.w === 1).toBe(true)
+  })
+
+  it('1x6 row of same-owner chickens merges to cow-tier yield', () => {
+    let s = initState(6, PLAYERS)
+    for (let c = 0; c < 6; c++) {
+      s = applyMove(s, encodeLine('h', 0, c))
+      s = applyMove(s, encodeLine('h', 1, c))
+    }
+    s = applyMove(s, encodeLine('v', 0, 1))
+    s = applyMove(s, encodeLine('v', 0, 3))
+    s = applyMove(s, encodeLine('v', 0, 5))
+    s = applyMove(s, encodeLine('v', 0, 2)) // captures (0,1)+(0,2)
+    s = applyMove(s, encodeLine('v', 0, 4)) // captures (0,3)+(0,4) — merges to 1×4 pig
+    s = applyMove(s, encodeLine('v', 0, 0)) // captures (0,0)
+    s = applyMove(s, encodeLine('v', 0, 6)) // captures (0,5) — merges to 1×6 cow
+    expect(s.boxOwner.size).toBe(6)
+    expect(s.plots.size).toBe(1)
+    const p = Array.from(s.plots.values())[0]
+    expect(p.asset).toBe('cow')
+    expect(p.h * p.w).toBe(6)
   })
 })
