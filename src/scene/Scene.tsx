@@ -3,6 +3,7 @@ import { useThree } from '@react-three/fiber'
 import { useMemo } from 'react'
 import Lines from './Lines'
 import Plots from './Plots'
+import HoverSync from './HoverSync'
 import { GameState, LineId } from '../engine/types'
 import { dotPos } from './coords'
 
@@ -55,6 +56,7 @@ export default function Scene({ state, onLineClick, isHumanTurn, currentColor }:
           currentColor={currentColor}
         />
         <DotGrid size={state.size} />
+        <HoverSync trigger={state.lines.size} />
       </group>
     </>
   )

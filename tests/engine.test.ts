@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { initState, applyMove, winners } from '../src/engine/gameEngine'
+import {
+  initState,
+  applyMove,
+  tickHarvest,
+  winners,
+} from '../src/engine/gameEngine'
 import {
   encodeLine,
   validMoves,
@@ -255,5 +260,88 @@ describe('winners', () => {
     while (s.status === 'playing') s = applyMove(s, validMoves(s)[0])
     const w = winners(s)
     expect(w.length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+describe('asset placement on capture', () => {
+  it('2x2 plot gets a pig', () => {
+    let s = initState(3, PLAYERS)
+    for (const id of plotPerimeter(0, 0, 2, 2)) s = applyMove(s, id)
+    const plot = Array.from(s.plots.values())[0]
+    expect(plot.asset).toBe('pig')
+  })
+
+  it('2x3 plot gets a cow', () => {
+    let s = initState(3, PLAYERS)
+    for (const id of plotPerimeter(0, 0, 2, 3)) s = applyMove(s, id)
+    const plot = Array.from(s.plots.values())[0]
+    expect(plot.asset).toBe('cow')
+  })
+
+  it('3x3 plot gets a vineyard', () => {
+    let s = initState(3, PLAYERS)
+    for (const id of plotPerimeter(0, 0, 3, 3)) s = applyMove(s, id)
+    const plot = Array.from(s.plots.values())[0]
+    expect(plot.asset).toBe('vineyard')
+  })
+
+  it('1x1 fallback plot gets a chicken', () => {
+    // 2x2 fully gridded → 4 1x1 plots → all chickens
+    let s = initState(3, PLAYERS)
+    s = applyMove(s, encodeLine('h', 1, 0))
+    s = applyMove(s, encodeLine('h', 1, 1))
+    s = applyMove(s, encodeLine('v', 0, 1))
+    s = applyMove(s, encodeLine('v', 1, 1))
+    for (const id of plotPerimeter(0, 0, 2, 2)) s = applyMove(s, id)
+    expect(Array.from(s.plots.values()).every((p) => p.asset === 'chicken')).toBe(true)
+  })
+})
+
+describe('tickHarvest', () => {
+  it('adds yields for each plot to its owner score and increments counter', () => {
+    let s = initState(3, PLAYERS, 6)
+    // Capture a 2x2 → pig (yield 6)
+    for (const id of plotPerimeter(0, 0, 2, 2)) s = applyMove(s, id)
+    const owner = Array.from(s.plots.values())[0].ownerIdx
+    const beforeScore = s.scores[owner]
+    s = tickHarvest(s)
+    expect(s.scores[owner]).toBe(beforeScore + 6) // pig yields 6
+    expect(s.harvestsElapsed).toBe(1)
+    expect(s.status).toBe('playing')
+  })
+
+  it('chicken yields scale per cell', () => {
+    let s = initState(3, PLAYERS, 6)
+    // Set up so a 1x3 chicken plot gets captured (interior walls + perimeter).
+    // Easier: gridded 1x3 → three 1x1 chickens → tick yields 3.
+    s = applyMove(s, encodeLine('v', 0, 1))
+    s = applyMove(s, encodeLine('v', 0, 2))
+    for (const id of plotPerimeter(0, 0, 1, 3)) s = applyMove(s, id)
+    const totalChickenCells = Array.from(s.plots.values())
+      .filter((p) => p.asset === 'chicken')
+      .reduce((acc, p) => acc + p.h * p.w, 0)
+    const owner = Array.from(s.plots.values())[0].ownerIdx
+    const beforeScore = s.scores[owner]
+    s = tickHarvest(s)
+    expect(s.scores[owner]).toBe(beforeScore + totalChickenCells)
+  })
+
+  it('ends the game when totalHarvests is reached', () => {
+    let s = initState(2, PLAYERS, 2)
+    expect(s.totalHarvests).toBe(2)
+    s = tickHarvest(s)
+    expect(s.status).toBe('playing')
+    s = tickHarvest(s)
+    expect(s.status).toBe('gameover')
+    expect(s.harvestsElapsed).toBe(2)
+  })
+
+  it('does nothing after gameover', () => {
+    let s = initState(2, PLAYERS, 1)
+    s = tickHarvest(s)
+    expect(s.status).toBe('gameover')
+    const before = s
+    s = tickHarvest(s)
+    expect(s).toBe(before)
   })
 })

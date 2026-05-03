@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { BotLevel, GameState, LineId, PlayerSpec } from '../engine/types'
-import { applyMove, initState } from '../engine/gameEngine'
+import { applyMove, initState, tickHarvest } from '../engine/gameEngine'
 import { decideMove } from '../bots'
 
 const BOT_THINK_MS = 450
+const HARVEST_INTERVAL_MS = 20_000
+const TOTAL_HARVESTS = 6
 
 function makePlayers(botLevel: BotLevel): PlayerSpec[] {
   return [
@@ -15,7 +17,10 @@ function makePlayers(botLevel: BotLevel): PlayerSpec[] {
 export function useGame(size = 6, initialBotLevel: BotLevel = 'medium') {
   const [botLevel, setBotLevel] = useState<BotLevel>(initialBotLevel)
   const players = useMemo(() => makePlayers(botLevel), [botLevel])
-  const [state, setState] = useState<GameState>(() => initState(size, players))
+  const [state, setState] = useState<GameState>(() =>
+    initState(size, players, TOTAL_HARVESTS),
+  )
+  const [nextHarvestAt, setNextHarvestAt] = useState<number | null>(null)
 
   const draw = useCallback((lineId: LineId) => {
     setState((s) => {
@@ -26,12 +31,12 @@ export function useGame(size = 6, initialBotLevel: BotLevel = 'medium') {
   }, [])
 
   const reset = useCallback(() => {
-    setState(initState(size, players))
+    setState(initState(size, players, TOTAL_HARVESTS))
   }, [size, players])
 
   // Reset whenever the bot level changes — different bot is a different game.
   useEffect(() => {
-    setState(initState(size, players))
+    setState(initState(size, players, TOTAL_HARVESTS))
   }, [size, players])
 
   // Bot driver
@@ -52,5 +57,20 @@ export function useGame(size = 6, initialBotLevel: BotLevel = 'medium') {
     return () => clearTimeout(t)
   }, [state])
 
-  return { state, draw, reset, botLevel, setBotLevel }
+  // Harvest scheduler. Each tick, sum yields to scores and advance the
+  // harvest counter. Reschedules itself by depending on harvestsElapsed.
+  useEffect(() => {
+    if (state.status !== 'playing') {
+      setNextHarvestAt(null)
+      return
+    }
+    const target = Date.now() + HARVEST_INTERVAL_MS
+    setNextHarvestAt(target)
+    const t = setTimeout(() => {
+      setState((s) => tickHarvest(s))
+    }, HARVEST_INTERVAL_MS)
+    return () => clearTimeout(t)
+  }, [state.harvestsElapsed, state.status])
+
+  return { state, draw, reset, botLevel, setBotLevel, nextHarvestAt }
 }

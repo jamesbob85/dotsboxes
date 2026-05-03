@@ -1,3 +1,4 @@
+import { useEffect, useReducer } from 'react'
 import { BotLevel, GameState } from '../engine/types'
 import { winners } from '../engine/gameEngine'
 
@@ -6,9 +7,16 @@ interface Props {
   onReset: () => void
   botLevel: BotLevel
   onBotLevelChange: (level: BotLevel) => void
+  nextHarvestAt: number | null
 }
 
-export default function HUD({ state, onReset, botLevel, onBotLevelChange }: Props) {
+export default function HUD({
+  state,
+  onReset,
+  botLevel,
+  onBotLevelChange,
+  nextHarvestAt,
+}: Props) {
   const isOver = state.status === 'gameover'
   const winnerIds = isOver ? winners(state) : []
   const totalBoxes = state.size * state.size
@@ -43,8 +51,16 @@ export default function HUD({ state, onReset, botLevel, onBotLevelChange }: Prop
         })}
       </div>
 
+      <div style={harvestPanelStyle}>
+        <div style={harvestLabelStyle}>Harvest</div>
+        <div style={harvestCountStyle}>
+          {state.harvestsElapsed} / {state.totalHarvests}
+        </div>
+        {!isOver && <CountdownTimer nextAt={nextHarvestAt} />}
+      </div>
+
       <div style={progressStyle}>
-        {claimed} / {totalBoxes} boxes
+        {claimed} / {totalBoxes} cells claimed
       </div>
 
       <div style={debugPanelStyle}>
@@ -88,6 +104,17 @@ export default function HUD({ state, onReset, botLevel, onBotLevelChange }: Prop
       )}
     </>
   )
+}
+
+function CountdownTimer({ nextAt }: { nextAt: number | null }) {
+  const [, force] = useReducer((x: number) => x + 1, 0)
+  useEffect(() => {
+    const i = setInterval(force, 200)
+    return () => clearInterval(i)
+  }, [])
+  if (!nextAt) return null
+  const remaining = Math.max(0, Math.ceil((nextAt - Date.now()) / 1000))
+  return <div style={countdownStyle}>next in {remaining}s</div>
 }
 
 const scoreboardStyle: React.CSSProperties = {
@@ -136,6 +163,45 @@ const scoreStyle: React.CSSProperties = {
   fontVariantNumeric: 'tabular-nums',
   minWidth: 28,
   textAlign: 'center',
+}
+
+const harvestPanelStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 78,
+  right: 16,
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'flex-end',
+  gap: 2,
+  padding: '8px 14px',
+  borderRadius: 12,
+  background: '#ffffffcc',
+  backdropFilter: 'blur(6px)',
+  WebkitBackdropFilter: 'blur(6px)',
+  boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+  fontSize: 13,
+  color: '#2b2b2b',
+  pointerEvents: 'none',
+}
+
+const harvestLabelStyle: React.CSSProperties = {
+  fontWeight: 700,
+  letterSpacing: 0.4,
+  textTransform: 'uppercase',
+  fontSize: 10,
+  color: '#5a5a5a',
+}
+
+const harvestCountStyle: React.CSSProperties = {
+  fontWeight: 800,
+  fontVariantNumeric: 'tabular-nums',
+  fontSize: 16,
+}
+
+const countdownStyle: React.CSSProperties = {
+  fontVariantNumeric: 'tabular-nums',
+  fontSize: 11,
+  color: '#7a7a7a',
 }
 
 const progressStyle: React.CSSProperties = {

@@ -9,8 +9,13 @@ import {
   plotCells,
   plotInterior,
 } from './moves'
+import { assetYield, pickBestAsset } from './assets'
 
-export function initState(size: number, players: PlayerSpec[]): GameState {
+export function initState(
+  size: number,
+  players: PlayerSpec[],
+  totalHarvests = 6,
+): GameState {
   return {
     size,
     players,
@@ -23,11 +28,11 @@ export function initState(size: number, players: PlayerSpec[]): GameState {
     status: 'playing',
     lastCapturedBy: null,
     lastLineId: null,
+    harvestsElapsed: 0,
+    totalHarvests,
   }
 }
 
-// Plot dimensions ordered by area, largest first. Greedy decomposition uses
-// this order so a 2×2 wins over its constituent 1×1s when both could fit.
 const PLOT_DIMS: Array<[number, number]> = (() => {
   const dims: Array<[number, number]> = []
   for (let h = 1; h <= MAX_PLOT_DIM; h++) {
@@ -39,15 +44,9 @@ const PLOT_DIMS: Array<[number, number]> = (() => {
 
 export interface ComponentInfo {
   cells: BoxId[]
-  // Number of boundary edges (edges between this component and the outside,
-  // claimed cells, or other components) that are NOT yet drawn. 0 = enclosed.
   missingBoundaryEdges: number
 }
 
-// Find all connected components of unclaimed cells. For each, also report
-// how many boundary edges are still undrawn (0 = enclosed and ready to be
-// captured; 1 = one move away from enclosure; etc.). Used by both the game
-// engine (filter to enclosed) and the medium bot (find at-risk regions).
 export function analyzeUnclaimedComponents(
   size: number,
   lines: Set<LineId>,
@@ -89,9 +88,6 @@ export function analyzeUnclaimedComponents(
         }
       }
 
-      // Collect every boundary edge for the component, then count which are
-      // still undrawn. Use a Set so each edge is counted once even though
-      // both endpoint cells reference it.
       const boundaryEdges = new Set<LineId>()
       for (const cellId of component) {
         const { r, c } = decodeBox(cellId)
@@ -128,10 +124,6 @@ function findEnclosedComponents(
     .map((c) => c.cells)
 }
 
-// Decompose a captured (enclosed) component into rectangular plots, greedy
-// largest-first. A rectangle is a valid plot only if all its cells are in
-// the component AND no interior lines are drawn. Cells that don't fit any
-// larger rectangle become 1×1 plots.
 function decomposeToPlots(
   size: number,
   lines: Set<LineId>,
@@ -149,13 +141,20 @@ function decomposeToPlots(
         if (!cells.every((c) => remaining.has(c))) continue
         if (plotInterior(r0, c0, h, w).some((id) => lines.has(id))) continue
         const id: PlotId = encodePlot(r0, c0, h, w)
-        plots.push({ id, ownerIdx, r0, c0, h, w })
+        plots.push({
+          id,
+          ownerIdx,
+          r0,
+          c0,
+          h,
+          w,
+          asset: pickBestAsset(h, w),
+        })
         for (const cell of cells) remaining.delete(cell)
       }
     }
   }
 
-  // Leftover cells become 1×1 plots.
   for (const cellId of remaining) {
     const { r, c } = decodeBox(cellId)
     plots.push({
@@ -165,10 +164,21 @@ function decomposeToPlots(
       c0: c,
       h: 1,
       w: 1,
+      asset: pickBestAsset(1, 1),
     })
   }
 
   return plots
+}
+
+function computeStatus(
+  state: { size: number; harvestsElapsed: number; totalHarvests: number },
+  boxOwner: Map<BoxId, number>,
+): GameState['status'] {
+  const totalCells = state.size * state.size
+  if (boxOwner.size === totalCells) return 'gameover'
+  if (state.harvestsElapsed >= state.totalHarvests) return 'gameover'
+  return 'playing'
 }
 
 export function applyMove(state: GameState, lineId: LineId): GameState {
@@ -200,9 +210,7 @@ export function applyMove(state: GameState, lineId: LineId): GameState {
     captured = true
   }
 
-  const totalCells = state.size * state.size
-  const status: GameState['status'] =
-    boxOwner.size === totalCells ? 'gameover' : 'playing'
+  const status = computeStatus(state, boxOwner)
   const next =
     status === 'gameover'
       ? state.current
@@ -222,6 +230,17 @@ export function applyMove(state: GameState, lineId: LineId): GameState {
     lastCapturedBy: captured ? state.current : null,
     lastLineId: lineId,
   }
+}
+
+export function tickHarvest(state: GameState): GameState {
+  if (state.status !== 'playing') return state
+  const scores = state.scores.slice()
+  for (const plot of state.plots.values()) {
+    scores[plot.ownerIdx] += assetYield(plot.asset, plot.h, plot.w)
+  }
+  const harvestsElapsed = state.harvestsElapsed + 1
+  const next = { ...state, scores, harvestsElapsed }
+  return { ...next, status: computeStatus(next, state.boxOwner) }
 }
 
 export function winners(state: GameState): number[] {

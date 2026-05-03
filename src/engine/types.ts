@@ -5,6 +5,8 @@ export type PlotId = string // `${r0}:${c0}:${h}:${w}`
 
 export type BotLevel = 'easy' | 'medium' | 'hard'
 
+export type AssetType = 'chicken' | 'pig' | 'cow' | 'vineyard'
+
 export interface PlayerSpec {
   id: number
   name: string
@@ -20,6 +22,7 @@ export interface Plot {
   c0: number
   h: number
   w: number
+  asset: AssetType
 }
 
 export interface GameState {
@@ -34,4 +37,6 @@ export interface GameState {
   status: 'playing' | 'gameover'
   lastCapturedBy: number | null
   lastLineId: LineId | null
+  harvestsElapsed: number
+  totalHarvests: number
 }
