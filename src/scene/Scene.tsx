@@ -7,7 +7,7 @@ import { GameState, LineId } from '../engine/types'
 import { dotPos } from './coords'
 
 const PAPER_COLOR = '#fbf3dc'
-const ELEVATION_DEG = 60
+const ELEVATION_DEG = 45
 const ELEVATION_RAD = (ELEVATION_DEG * Math.PI) / 180
 
 // Stretch the world's depth axis so the board appears square on screen
