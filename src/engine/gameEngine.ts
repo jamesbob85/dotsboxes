@@ -1,11 +1,13 @@
 import { GameState, LineId, PlayerSpec, Plot, PlotId, BoxId } from './types'
 import {
   MAX_PLOT_DIM,
+  decodeBox,
+  encodeBox,
+  encodeLine,
   encodePlot,
   isValidMove,
   plotCells,
   plotInterior,
-  plotPerimeter,
 } from './moves'
 
 export function initState(size: number, players: PlayerSpec[]): GameState {
@@ -24,8 +26,8 @@ export function initState(size: number, players: PlayerSpec[]): GameState {
   }
 }
 
-// All possible plot dimensions, ordered largest area first so the greedy
-// scan prefers a 3×3 over its constituent 1×1s when both could be valid.
+// Plot dimensions ordered by area, largest first. Greedy decomposition uses
+// this order so a 2×2 wins over its constituent 1×1s when both could fit.
 const PLOT_DIMS: Array<[number, number]> = (() => {
   const dims: Array<[number, number]> = []
   for (let h = 1; h <= MAX_PLOT_DIM; h++) {
@@ -35,26 +37,125 @@ const PLOT_DIMS: Array<[number, number]> = (() => {
   return dims
 })()
 
-function isPlotValid(
+// Find connected components of unclaimed cells, considering drawn lines as
+// walls that block adjacency. Returns only components that are fully
+// enclosed (every boundary edge with outside / claimed cells / grid edge
+// is a drawn line).
+function findEnclosedComponents(
   size: number,
   lines: Set<LineId>,
   claimedCells: Set<BoxId>,
-  r0: number,
-  c0: number,
-  h: number,
-  w: number,
-): boolean {
-  if (r0 + h > size || c0 + w > size) return false
-  for (const cell of plotCells(r0, c0, h, w)) {
-    if (claimedCells.has(cell)) return false
+): BoxId[][] {
+  const visited = new Set<BoxId>()
+  const enclosed: BoxId[][] = []
+
+  for (let r0 = 0; r0 < size; r0++) {
+    for (let c0 = 0; c0 < size; c0++) {
+      const startId = encodeBox(r0, c0)
+      if (claimedCells.has(startId) || visited.has(startId)) continue
+
+      // BFS the component.
+      const component: BoxId[] = []
+      const inComponent = new Set<BoxId>()
+      const stack: Array<[number, number]> = [[r0, c0]]
+      visited.add(startId)
+      inComponent.add(startId)
+
+      while (stack.length > 0) {
+        const [cr, cc] = stack.pop()!
+        component.push(encodeBox(cr, cc))
+
+        const neighbors: Array<[number, number, LineId]> = [
+          [cr - 1, cc, encodeLine('h', cr, cc)],
+          [cr + 1, cc, encodeLine('h', cr + 1, cc)],
+          [cr, cc - 1, encodeLine('v', cr, cc)],
+          [cr, cc + 1, encodeLine('v', cr, cc + 1)],
+        ]
+
+        for (const [nr, nc, edge] of neighbors) {
+          if (nr < 0 || nr >= size || nc < 0 || nc >= size) continue
+          const nid = encodeBox(nr, nc)
+          if (claimedCells.has(nid) || visited.has(nid)) continue
+          if (lines.has(edge)) continue // wall blocks
+          visited.add(nid)
+          inComponent.add(nid)
+          stack.push([nr, nc])
+        }
+      }
+
+      // Enclosure check: every edge from a component cell to a non-component
+      // neighbor (claimed cell, out-of-bounds, or other component) must be a
+      // drawn line. Edges to component cells are internal — they may be
+      // drawn (an internal wall) or undrawn, doesn't matter.
+      let isEnclosed = true
+      checkEnclosure: for (const cellId of component) {
+        const { r, c } = decodeBox(cellId)
+        const checks: Array<{ nr: number; nc: number; edge: LineId }> = [
+          { nr: r - 1, nc: c, edge: encodeLine('h', r, c) },
+          { nr: r + 1, nc: c, edge: encodeLine('h', r + 1, c) },
+          { nr: r, nc: c - 1, edge: encodeLine('v', r, c) },
+          { nr: r, nc: c + 1, edge: encodeLine('v', r, c + 1) },
+        ]
+        for (const { nr, nc, edge } of checks) {
+          const inside = nr >= 0 && nr < size && nc >= 0 && nc < size
+          const neighborInComponent =
+            inside && inComponent.has(encodeBox(nr, nc))
+          if (neighborInComponent) continue
+          if (!lines.has(edge)) {
+            isEnclosed = false
+            break checkEnclosure
+          }
+        }
+      }
+
+      if (isEnclosed) enclosed.push(component)
+    }
   }
-  for (const id of plotPerimeter(r0, c0, h, w)) {
-    if (!lines.has(id)) return false
+
+  return enclosed
+}
+
+// Decompose a captured (enclosed) component into rectangular plots, greedy
+// largest-first. A rectangle is a valid plot only if all its cells are in
+// the component AND no interior lines are drawn. Cells that don't fit any
+// larger rectangle become 1×1 plots.
+function decomposeToPlots(
+  size: number,
+  lines: Set<LineId>,
+  component: BoxId[],
+  ownerIdx: number,
+): Plot[] {
+  const remaining = new Set(component)
+  const plots: Plot[] = []
+
+  for (const [h, w] of PLOT_DIMS) {
+    if (h === 1 && w === 1) continue
+    for (let r0 = 0; r0 + h <= size; r0++) {
+      for (let c0 = 0; c0 + w <= size; c0++) {
+        const cells = plotCells(r0, c0, h, w)
+        if (!cells.every((c) => remaining.has(c))) continue
+        if (plotInterior(r0, c0, h, w).some((id) => lines.has(id))) continue
+        const id: PlotId = encodePlot(r0, c0, h, w)
+        plots.push({ id, ownerIdx, r0, c0, h, w })
+        for (const cell of cells) remaining.delete(cell)
+      }
+    }
   }
-  for (const id of plotInterior(r0, c0, h, w)) {
-    if (lines.has(id)) return false
+
+  // Leftover cells become 1×1 plots.
+  for (const cellId of remaining) {
+    const { r, c } = decodeBox(cellId)
+    plots.push({
+      id: encodePlot(r, c, 1, 1),
+      ownerIdx,
+      r0: r,
+      c0: c,
+      h: 1,
+      w: 1,
+    })
   }
-  return true
+
+  return plots
 }
 
 export function applyMove(state: GameState, lineId: LineId): GameState {
@@ -74,25 +175,16 @@ export function applyMove(state: GameState, lineId: LineId): GameState {
 
   let captured = false
 
-  // Greedy largest-first scan. Any rectangular region whose perimeter is
-  // fully drawn, has no internal lines, and contains no already-claimed
-  // cells becomes a plot owned by the current player. Marking cells as
-  // claimed mid-scan prevents 1×1s being claimed inside a captured 2×2.
-  for (const [h, w] of PLOT_DIMS) {
-    for (let r0 = 0; r0 + h <= state.size; r0++) {
-      for (let c0 = 0; c0 + w <= state.size; c0++) {
-        if (!isPlotValid(state.size, lines, claimedCells, r0, c0, h, w)) continue
-        const id: PlotId = encodePlot(r0, c0, h, w)
-        const plot: Plot = { id, ownerIdx: state.current, r0, c0, h, w }
-        plots.set(id, plot)
-        for (const cell of plotCells(r0, c0, h, w)) {
-          boxOwner.set(cell, state.current)
-          claimedCells.add(cell)
-        }
-        scores[state.current] += h * w
-        captured = true
-      }
+  const enclosed = findEnclosedComponents(state.size, lines, claimedCells)
+  for (const component of enclosed) {
+    for (const cellId of component) {
+      boxOwner.set(cellId, state.current)
+      claimedCells.add(cellId)
     }
+    const newPlots = decomposeToPlots(state.size, lines, component, state.current)
+    for (const p of newPlots) plots.set(p.id, p)
+    scores[state.current] += component.length
+    captured = true
   }
 
   const totalCells = state.size * state.size

@@ -159,13 +159,68 @@ describe('variable-size plot capture', () => {
   })
 
   it('greedy largest-first prefers a 2x2 over its 4 1x1 sub-plots when both could match', () => {
-    // Construct a board where, in principle, a 2x2 could be claimed. Verify
-    // we record one 2x2 plot, not four 1x1 plots.
     const s0 = initState(3, PLAYERS)
     const s = drawAll(s0, plotPerimeter(0, 0, 2, 2))
     expect(s.plots.size).toBe(1)
     const sizes = Array.from(s.plots.values()).map((p) => p.h * p.w)
     expect(sizes).toEqual([4])
+  })
+
+  it('partial internal wall: still captures all enclosed cells, decomposed into smaller rects', () => {
+    // The motivating bug: bot drew one internal line through what would have
+    // been a 2×2. Player encloses the perimeter — should still capture all
+    // 4 cells, just split by the wall.
+    let s = initState(3, PLAYERS)
+    s = applyMove(s, encodeLine('h', 1, 0))
+    s = applyMove(s, encodeLine('h', 1, 1)) // both halves of the horizontal divider
+    const perim = plotPerimeter(0, 0, 2, 2)
+    for (const id of perim) s = applyMove(s, id)
+    expect(s.boxOwner.size).toBe(4) // all 4 captured
+    // 2x2 invalid (interior drawn). Should decompose into two 1×2 horizontal
+    // plots (top row, bottom row).
+    const plots = Array.from(s.plots.values())
+    expect(plots.length).toBe(2)
+    expect(plots.every((p) => p.h === 1 && p.w === 2)).toBe(true)
+  })
+
+  it('U-shape from a single half-divider is captured as one component', () => {
+    // Only h:1:0 is drawn (left half of horizontal divider). The 2×2 region's
+    // 4 cells are still all in one connected component (path through (0,1)
+    // and (1,1)). With perimeter complete, it's enclosed. Decomposes into
+    // two 1×2 plots.
+    let s = initState(3, PLAYERS)
+    s = applyMove(s, encodeLine('h', 1, 0))
+    const perim = plotPerimeter(0, 0, 2, 2)
+    for (const id of perim) s = applyMove(s, id)
+    expect(s.boxOwner.size).toBe(4)
+    const plots = Array.from(s.plots.values())
+    // Best decomposition: top row 1×2 (no interior) + bottom row 1×2 (no interior).
+    expect(plots.length).toBe(2)
+    expect(plots.every((p) => p.h * p.w === 2)).toBe(true)
+  })
+
+  it('fully gridded 2x2 captures 4 separate 1x1 plots', () => {
+    let s = initState(3, PLAYERS)
+    // All interior lines.
+    s = applyMove(s, encodeLine('h', 1, 0))
+    s = applyMove(s, encodeLine('h', 1, 1))
+    s = applyMove(s, encodeLine('v', 0, 1))
+    s = applyMove(s, encodeLine('v', 1, 1))
+    const perim = plotPerimeter(0, 0, 2, 2)
+    for (const id of perim) s = applyMove(s, id)
+    expect(s.boxOwner.size).toBe(4)
+    const plots = Array.from(s.plots.values())
+    expect(plots.length).toBe(4)
+    expect(plots.every((p) => p.h === 1 && p.w === 1)).toBe(true)
+  })
+
+  it('does not capture a non-enclosed region', () => {
+    let s = initState(3, PLAYERS)
+    // Draw 7 of the 8 perimeter lines of a 2x2.
+    const perim = plotPerimeter(0, 0, 2, 2)
+    for (let i = 0; i < perim.length - 1; i++) s = applyMove(s, perim[i])
+    expect(s.boxOwner.size).toBe(0)
+    expect(s.plots.size).toBe(0)
   })
 })
 
