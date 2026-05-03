@@ -4,7 +4,7 @@ import HUD from './hud/HUD'
 import { useGame } from './game/useGame'
 
 export default function App() {
-  const { state, draw, reset } = useGame(6)
+  const { state, draw, reset, botLevel, setBotLevel } = useGame(6)
   const isHumanTurn =
     state.status === 'playing' && state.players[state.current].kind === 'human'
   const currentColor = state.players[state.current].color
@@ -24,7 +24,12 @@ export default function App() {
           currentColor={currentColor}
         />
       </Canvas>
-      <HUD state={state} onReset={reset} />
+      <HUD
+        state={state}
+        onReset={reset}
+        botLevel={botLevel}
+        onBotLevelChange={setBotLevel}
+      />
     </div>
   )
 }

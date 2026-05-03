@@ -1,12 +1,14 @@
-import { GameState } from '../engine/types'
+import { BotLevel, GameState } from '../engine/types'
 import { winners } from '../engine/gameEngine'
 
 interface Props {
   state: GameState
   onReset: () => void
+  botLevel: BotLevel
+  onBotLevelChange: (level: BotLevel) => void
 }
 
-export default function HUD({ state, onReset }: Props) {
+export default function HUD({ state, onReset, botLevel, onBotLevelChange }: Props) {
   const isOver = state.status === 'gameover'
   const winnerIds = isOver ? winners(state) : []
   const totalBoxes = state.size * state.size
@@ -43,6 +45,22 @@ export default function HUD({ state, onReset }: Props) {
 
       <div style={progressStyle}>
         {claimed} / {totalBoxes} boxes
+      </div>
+
+      <div style={debugPanelStyle}>
+        <label style={debugLabelStyle}>Bot</label>
+        <select
+          value={botLevel}
+          onChange={(e) => onBotLevelChange(e.target.value as BotLevel)}
+          style={selectStyle}
+          aria-label="Bot difficulty"
+        >
+          <option value="easy">Dumb</option>
+          <option value="medium">Smart</option>
+        </select>
+        <button style={resetButtonStyle} onClick={onReset} aria-label="New game">
+          ↻
+        </button>
       </div>
 
       {isOver && (
@@ -131,6 +149,54 @@ const progressStyle: React.CSSProperties = {
   fontWeight: 500,
   opacity: 0.7,
   pointerEvents: 'none',
+}
+
+const debugPanelStyle: React.CSSProperties = {
+  position: 'absolute',
+  bottom: 16,
+  left: 16,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  padding: '8px 12px',
+  borderRadius: 12,
+  background: '#ffffffcc',
+  backdropFilter: 'blur(6px)',
+  WebkitBackdropFilter: 'blur(6px)',
+  boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+  fontSize: 13,
+  color: '#2b2b2b',
+}
+
+const debugLabelStyle: React.CSSProperties = {
+  fontWeight: 600,
+  letterSpacing: 0.3,
+  textTransform: 'uppercase',
+  fontSize: 11,
+  color: '#5a5a5a',
+}
+
+const selectStyle: React.CSSProperties = {
+  border: '1px solid #d4d4d4',
+  borderRadius: 8,
+  padding: '4px 8px',
+  fontSize: 13,
+  fontWeight: 600,
+  background: '#fffaef',
+  color: '#2b2b2b',
+  cursor: 'pointer',
+}
+
+const resetButtonStyle: React.CSSProperties = {
+  background: '#2b2b2b',
+  color: '#fffaef',
+  border: 'none',
+  borderRadius: 8,
+  padding: '4px 10px',
+  fontSize: 16,
+  fontWeight: 700,
+  cursor: 'pointer',
+  lineHeight: 1,
 }
 
 const overlayStyle: React.CSSProperties = {

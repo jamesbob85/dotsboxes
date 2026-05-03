@@ -37,24 +37,30 @@ const PLOT_DIMS: Array<[number, number]> = (() => {
   return dims
 })()
 
-// Find connected components of unclaimed cells, considering drawn lines as
-// walls that block adjacency. Returns only components that are fully
-// enclosed (every boundary edge with outside / claimed cells / grid edge
-// is a drawn line).
-function findEnclosedComponents(
+export interface ComponentInfo {
+  cells: BoxId[]
+  // Number of boundary edges (edges between this component and the outside,
+  // claimed cells, or other components) that are NOT yet drawn. 0 = enclosed.
+  missingBoundaryEdges: number
+}
+
+// Find all connected components of unclaimed cells. For each, also report
+// how many boundary edges are still undrawn (0 = enclosed and ready to be
+// captured; 1 = one move away from enclosure; etc.). Used by both the game
+// engine (filter to enclosed) and the medium bot (find at-risk regions).
+export function analyzeUnclaimedComponents(
   size: number,
   lines: Set<LineId>,
   claimedCells: Set<BoxId>,
-): BoxId[][] {
+): ComponentInfo[] {
   const visited = new Set<BoxId>()
-  const enclosed: BoxId[][] = []
+  const results: ComponentInfo[] = []
 
   for (let r0 = 0; r0 < size; r0++) {
     for (let c0 = 0; c0 < size; c0++) {
       const startId = encodeBox(r0, c0)
       if (claimedCells.has(startId) || visited.has(startId)) continue
 
-      // BFS the component.
       const component: BoxId[] = []
       const inComponent = new Set<BoxId>()
       const stack: Array<[number, number]> = [[r0, c0]]
@@ -76,19 +82,18 @@ function findEnclosedComponents(
           if (nr < 0 || nr >= size || nc < 0 || nc >= size) continue
           const nid = encodeBox(nr, nc)
           if (claimedCells.has(nid) || visited.has(nid)) continue
-          if (lines.has(edge)) continue // wall blocks
+          if (lines.has(edge)) continue
           visited.add(nid)
           inComponent.add(nid)
           stack.push([nr, nc])
         }
       }
 
-      // Enclosure check: every edge from a component cell to a non-component
-      // neighbor (claimed cell, out-of-bounds, or other component) must be a
-      // drawn line. Edges to component cells are internal — they may be
-      // drawn (an internal wall) or undrawn, doesn't matter.
-      let isEnclosed = true
-      checkEnclosure: for (const cellId of component) {
+      // Collect every boundary edge for the component, then count which are
+      // still undrawn. Use a Set so each edge is counted once even though
+      // both endpoint cells reference it.
+      const boundaryEdges = new Set<LineId>()
+      for (const cellId of component) {
         const { r, c } = decodeBox(cellId)
         const checks: Array<{ nr: number; nc: number; edge: LineId }> = [
           { nr: r - 1, nc: c, edge: encodeLine('h', r, c) },
@@ -98,21 +103,29 @@ function findEnclosedComponents(
         ]
         for (const { nr, nc, edge } of checks) {
           const inside = nr >= 0 && nr < size && nc >= 0 && nc < size
-          const neighborInComponent =
-            inside && inComponent.has(encodeBox(nr, nc))
-          if (neighborInComponent) continue
-          if (!lines.has(edge)) {
-            isEnclosed = false
-            break checkEnclosure
-          }
+          if (inside && inComponent.has(encodeBox(nr, nc))) continue
+          boundaryEdges.add(edge)
         }
       }
 
-      if (isEnclosed) enclosed.push(component)
+      let missing = 0
+      for (const edge of boundaryEdges) if (!lines.has(edge)) missing++
+
+      results.push({ cells: component, missingBoundaryEdges: missing })
     }
   }
 
-  return enclosed
+  return results
+}
+
+function findEnclosedComponents(
+  size: number,
+  lines: Set<LineId>,
+  claimedCells: Set<BoxId>,
+): BoxId[][] {
+  return analyzeUnclaimedComponents(size, lines, claimedCells)
+    .filter((c) => c.missingBoundaryEdges === 0)
+    .map((c) => c.cells)
 }
 
 // Decompose a captured (enclosed) component into rectangular plots, greedy

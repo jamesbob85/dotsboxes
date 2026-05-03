@@ -1,16 +1,20 @@
-import { useCallback, useEffect, useState } from 'react'
-import { GameState, LineId, PlayerSpec } from '../engine/types'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { BotLevel, GameState, LineId, PlayerSpec } from '../engine/types'
 import { applyMove, initState } from '../engine/gameEngine'
 import { decideMove } from '../bots'
 
-const DEFAULT_PLAYERS: PlayerSpec[] = [
-  { id: 0, name: 'You', color: '#e8804a', kind: 'human' },
-  { id: 1, name: 'Bot', color: '#5e87cb', kind: 'bot', botLevel: 'easy' },
-]
-
 const BOT_THINK_MS = 450
 
-export function useGame(size = 6, players: PlayerSpec[] = DEFAULT_PLAYERS) {
+function makePlayers(botLevel: BotLevel): PlayerSpec[] {
+  return [
+    { id: 0, name: 'You', color: '#e8804a', kind: 'human' },
+    { id: 1, name: 'Bot', color: '#5e87cb', kind: 'bot', botLevel },
+  ]
+}
+
+export function useGame(size = 6, initialBotLevel: BotLevel = 'medium') {
+  const [botLevel, setBotLevel] = useState<BotLevel>(initialBotLevel)
+  const players = useMemo(() => makePlayers(botLevel), [botLevel])
   const [state, setState] = useState<GameState>(() => initState(size, players))
 
   const draw = useCallback((lineId: LineId) => {
@@ -25,6 +29,12 @@ export function useGame(size = 6, players: PlayerSpec[] = DEFAULT_PLAYERS) {
     setState(initState(size, players))
   }, [size, players])
 
+  // Reset whenever the bot level changes — different bot is a different game.
+  useEffect(() => {
+    setState(initState(size, players))
+  }, [size, players])
+
+  // Bot driver
   useEffect(() => {
     if (state.status !== 'playing') return
     const cur = state.players[state.current]
@@ -42,5 +52,5 @@ export function useGame(size = 6, players: PlayerSpec[] = DEFAULT_PLAYERS) {
     return () => clearTimeout(t)
   }, [state])
 
-  return { state, draw, reset }
+  return { state, draw, reset, botLevel, setBotLevel }
 }
