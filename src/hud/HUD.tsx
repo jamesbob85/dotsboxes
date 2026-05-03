@@ -1,4 +1,3 @@
-import { useEffect, useReducer } from 'react'
 import { BotLevel, GameState } from '../engine/types'
 import { winners } from '../engine/gameEngine'
 
@@ -7,7 +6,6 @@ interface Props {
   onReset: () => void
   botLevel: BotLevel
   onBotLevelChange: (level: BotLevel) => void
-  nextHarvestAt: number | null
 }
 
 export default function HUD({
@@ -15,7 +13,6 @@ export default function HUD({
   onReset,
   botLevel,
   onBotLevelChange,
-  nextHarvestAt,
 }: Props) {
   const isOver = state.status === 'gameover'
   const winnerIds = isOver ? winners(state) : []
@@ -53,10 +50,8 @@ export default function HUD({
 
       <div style={harvestPanelStyle}>
         <div style={harvestLabelStyle}>Harvest</div>
-        <div style={harvestCountStyle}>
-          {state.harvestsElapsed} / {state.totalHarvests}
-        </div>
-        {!isOver && <CountdownTimer nextAt={nextHarvestAt} />}
+        <div style={harvestCountStyle}>#{state.harvestsElapsed}</div>
+        <div style={countdownStyle}>each turn pass</div>
       </div>
 
       <div style={progressStyle}>
@@ -104,17 +99,6 @@ export default function HUD({
       )}
     </>
   )
-}
-
-function CountdownTimer({ nextAt }: { nextAt: number | null }) {
-  const [, force] = useReducer((x: number) => x + 1, 0)
-  useEffect(() => {
-    const i = setInterval(force, 200)
-    return () => clearInterval(i)
-  }, [])
-  if (!nextAt) return null
-  const remaining = Math.max(0, Math.ceil((nextAt - Date.now()) / 1000))
-  return <div style={countdownStyle}>next in {remaining}s</div>
 }
 
 const scoreboardStyle: React.CSSProperties = {

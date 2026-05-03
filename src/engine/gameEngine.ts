@@ -14,7 +14,7 @@ import { assetYield, pickBestAsset } from './assets'
 export function initState(
   size: number,
   players: PlayerSpec[],
-  totalHarvests = 6,
+  totalHarvests = Infinity,
 ): GameState {
   return {
     size,
@@ -124,6 +124,113 @@ function findEnclosedComponents(
     .map((c) => c.cells)
 }
 
+// Plot dimensions eligible for auto-merge upgrade (≥2×2). Largest-first so
+// a 3×3 vineyard merge wins over its constituent 2×2 pig.
+const MERGE_DIMS: Array<[number, number]> = [
+  [3, 3],
+  [2, 3],
+  [3, 2],
+  [2, 2],
+]
+
+function findPlotIdForCell(
+  plots: Map<PlotId, Plot>,
+  cellId: BoxId,
+): PlotId | null {
+  const { r, c } = decodeBox(cellId)
+  for (const [id, plot] of plots) {
+    if (
+      r >= plot.r0 &&
+      r < plot.r0 + plot.h &&
+      c >= plot.c0 &&
+      c < plot.c0 + plot.w
+    ) {
+      return id
+    }
+  }
+  return null
+}
+
+// After a capture, scan for rectangles where every cell is owned by the
+// capturing player and every overlapping plot is fully contained in the
+// rectangle. If the merged asset's yield exceeds the sum of current
+// overlapping yields, replace those plots with one bigger plot. Greedy
+// largest-first.
+function tryMergePlots(
+  size: number,
+  plots: Map<PlotId, Plot>,
+  boxOwner: Map<BoxId, number>,
+  ownerIdx: number,
+): { plots: Map<PlotId, Plot>; changed: boolean } {
+  const result = new Map(plots)
+  let changed = false
+
+  for (const [h, w] of MERGE_DIMS) {
+    for (let r0 = 0; r0 + h <= size; r0++) {
+      for (let c0 = 0; c0 + w <= size; c0++) {
+        const cells = plotCells(r0, c0, h, w)
+        if (!cells.every((c) => boxOwner.get(c) === ownerIdx)) continue
+
+        const overlappingIds = new Set<PlotId>()
+        for (const c of cells) {
+          const id = findPlotIdForCell(result, c)
+          if (id) overlappingIds.add(id)
+        }
+
+        // Skip degenerate case: rectangle is already exactly one plot of the
+        // same shape (no merge needed).
+        if (overlappingIds.size === 1) {
+          const only = result.get(Array.from(overlappingIds)[0])!
+          if (only.r0 === r0 && only.c0 === c0 && only.h === h && only.w === w) {
+            continue
+          }
+        }
+
+        // Every overlapping plot must be fully contained in the rectangle —
+        // can't slice an existing plot in half.
+        let allContained = true
+        for (const id of overlappingIds) {
+          const p = result.get(id)!
+          if (
+            p.r0 < r0 ||
+            p.c0 < c0 ||
+            p.r0 + p.h > r0 + h ||
+            p.c0 + p.w > c0 + w
+          ) {
+            allContained = false
+            break
+          }
+        }
+        if (!allContained) continue
+
+        let currentYield = 0
+        for (const id of overlappingIds) {
+          const p = result.get(id)!
+          currentYield += assetYield(p.asset, p.h, p.w)
+        }
+        const newAsset = pickBestAsset(h, w)
+        const newYield = assetYield(newAsset, h, w)
+        if (newYield <= currentYield) continue
+
+        for (const id of overlappingIds) result.delete(id)
+        const newId = encodePlot(r0, c0, h, w)
+        result.set(newId, {
+          id: newId,
+          ownerIdx,
+          r0,
+          c0,
+          h,
+          w,
+          asset: newAsset,
+        })
+        changed = true
+      }
+    }
+  }
+
+  return { plots: result, changed }
+}
+
 function decomposeToPlots(
   size: number,
   lines: Set<LineId>,
@@ -210,26 +317,44 @@ export function applyMove(state: GameState, lineId: LineId): GameState {
     captured = true
   }
 
-  const status = computeStatus(state, boxOwner)
-  const next =
-    status === 'gameover'
-      ? state.current
-      : captured
-      ? state.current
-      : (state.current + 1) % state.players.length
+  // After captures, try to merge same-owner plots into higher-yield assets.
+  if (captured) {
+    const merged = tryMergePlots(state.size, plots, boxOwner, state.current)
+    if (merged.changed) {
+      plots.clear()
+      for (const [id, p] of merged.plots) plots.set(id, p)
+    }
+  }
 
-  return {
+  // Build the post-move state. Status is determined first; if the turn is
+  // about to pass to another player (no capture, game still on), we run a
+  // harvest tick before advancing the player index. Capturing moves keep the
+  // turn AND skip the harvest, so a capture streak doesn't compound with
+  // extra harvest ticks.
+  let result: GameState = {
     ...state,
     lines,
     lineOwner,
     boxOwner,
     plots,
     scores,
-    current: next,
-    status,
+    current: state.current,
+    status: computeStatus(state, boxOwner),
     lastCapturedBy: captured ? state.current : null,
     lastLineId: lineId,
   }
+
+  if (!captured && result.status === 'playing') {
+    result = tickHarvest(result)
+    if (result.status === 'playing') {
+      result = {
+        ...result,
+        current: (state.current + 1) % state.players.length,
+      }
+    }
+  }
+
+  return result
 }
 
 export function tickHarvest(state: GameState): GameState {

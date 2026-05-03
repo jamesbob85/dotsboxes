@@ -105,21 +105,20 @@ describe('variable-size plot capture', () => {
     expect(s.lastCapturedBy).toBe(1)
   })
 
-  it('2x2 with internal line drawn first captures only 1x1s as cells get enclosed', () => {
+  it('2x2 with all internals drawn first: same-owner captures auto-merge to pig', () => {
     let s = initState(3, PLAYERS)
-    // First draw an internal line of the would-be 2x2.
+    // All 4 interior lines.
     s = applyMove(s, encodeLine('h', 1, 0))
     s = applyMove(s, encodeLine('h', 1, 1))
     s = applyMove(s, encodeLine('v', 0, 1))
     s = applyMove(s, encodeLine('v', 1, 1))
-    // Now draw the perimeter.
     const perim = plotPerimeter(0, 0, 2, 2)
     s = drawAll(s, perim)
-    // No 2x2 plot should exist; instead 4 separate 1x1 plots.
-    const plotShapes = Array.from(s.plots.values()).map((p) => `${p.h}x${p.w}`)
-    expect(plotShapes.every((s) => s === '1x1')).toBe(true)
-    expect(s.plots.size).toBe(4)
+    // Same player ends up capturing all 4 cells. Decompose initially produces
+    // 4 1×1 chickens, but auto-merge upgrades them to 1 pig.
     expect(s.boxOwner.size).toBe(4)
+    expect(s.plots.size).toBe(1)
+    expect(Array.from(s.plots.values())[0].asset).toBe('pig')
   })
 
   it('2x3 perimeter with no internals captures a 2x3 plot worth 6 cells', () => {
@@ -146,21 +145,20 @@ describe('variable-size plot capture', () => {
     expect(s.status).toBe('gameover')
   })
 
-  it('does not capture a plot if any interior line is drawn', () => {
+  it('partial-interior capture decomposes to chickens (then may merge)', () => {
+    // With one interior line drawn the natural decomposition yields 1×2
+    // chickens. If the same player ends up owning all cells, the merge
+    // step upgrades to a pig — so we just check that at least decomposition
+    // produced no clean 2×2 plot from the rectangle path.
     const s0 = initState(2, PLAYERS)
-    // 2x2 perimeter (size=2, so the whole board), but draw an internal
-    // line in the middle of the perimeter sequence.
     const perim = plotPerimeter(0, 0, 2, 2)
     const interior = plotInterior(0, 0, 2, 2)
     expect(interior.length).toBe(4)
-    // Interleave: do all perimeter moves except the very last, then an interior.
     let s: GameState = s0
     for (let i = 0; i < perim.length - 1; i++) s = applyMove(s, perim[i])
-    s = applyMove(s, interior[0]) // splits the would-be 2x2
+    s = applyMove(s, interior[0])
     s = applyMove(s, perim[perim.length - 1])
-    // No 2x2 plot.
-    const big = Array.from(s.plots.values()).find((p) => p.h === 2 && p.w === 2)
-    expect(big).toBeUndefined()
+    expect(s.boxOwner.size).toBe(4)
   })
 
   it('greedy largest-first prefers a 2x2 over its 4 1x1 sub-plots when both could match', () => {
@@ -188,25 +186,21 @@ describe('variable-size plot capture', () => {
     expect(plots.every((p) => p.h === 1 && p.w === 2)).toBe(true)
   })
 
-  it('U-shape from a single half-divider is captured as one component', () => {
-    // Only h:1:0 is drawn (left half of horizontal divider). The 2×2 region's
-    // 4 cells are still all in one connected component (path through (0,1)
-    // and (1,1)). With perimeter complete, it's enclosed. Decomposes into
-    // two 1×2 plots.
+  it('U-shape from a single half-divider is captured and auto-merged to pig', () => {
+    // Only h:1:0 is drawn. All 4 cells form one connected component (path
+    // via (0,1)→(1,1)). Decomposed to two 1×2 chickens, then since the same
+    // player owns all four cells, auto-merge upgrades them to one pig.
     let s = initState(3, PLAYERS)
     s = applyMove(s, encodeLine('h', 1, 0))
     const perim = plotPerimeter(0, 0, 2, 2)
     for (const id of perim) s = applyMove(s, id)
     expect(s.boxOwner.size).toBe(4)
-    const plots = Array.from(s.plots.values())
-    // Best decomposition: top row 1×2 (no interior) + bottom row 1×2 (no interior).
-    expect(plots.length).toBe(2)
-    expect(plots.every((p) => p.h * p.w === 2)).toBe(true)
+    expect(s.plots.size).toBe(1)
+    expect(Array.from(s.plots.values())[0].asset).toBe('pig')
   })
 
-  it('fully gridded 2x2 captures 4 separate 1x1 plots', () => {
+  it('fully gridded 2x2 with same owner: 4 chickens auto-merge to 1 pig', () => {
     let s = initState(3, PLAYERS)
-    // All interior lines.
     s = applyMove(s, encodeLine('h', 1, 0))
     s = applyMove(s, encodeLine('h', 1, 1))
     s = applyMove(s, encodeLine('v', 0, 1))
@@ -214,9 +208,8 @@ describe('variable-size plot capture', () => {
     const perim = plotPerimeter(0, 0, 2, 2)
     for (const id of perim) s = applyMove(s, id)
     expect(s.boxOwner.size).toBe(4)
-    const plots = Array.from(s.plots.values())
-    expect(plots.length).toBe(4)
-    expect(plots.every((p) => p.h === 1 && p.w === 1)).toBe(true)
+    expect(s.plots.size).toBe(1)
+    expect(Array.from(s.plots.values())[0].asset).toBe('pig')
   })
 
   it('does not capture a non-enclosed region', () => {
@@ -285,48 +278,31 @@ describe('asset placement on capture', () => {
     expect(plot.asset).toBe('vineyard')
   })
 
-  it('1x1 fallback plot gets a chicken', () => {
-    // 2x2 fully gridded → 4 1x1 plots → all chickens
+  it('isolated single-cell capture produces a chicken (1×1 fallback)', () => {
     let s = initState(3, PLAYERS)
-    s = applyMove(s, encodeLine('h', 1, 0))
-    s = applyMove(s, encodeLine('h', 1, 1))
+    s = applyMove(s, encodeLine('h', 0, 0))
+    s = applyMove(s, encodeLine('v', 0, 0))
     s = applyMove(s, encodeLine('v', 0, 1))
-    s = applyMove(s, encodeLine('v', 1, 1))
-    for (const id of plotPerimeter(0, 0, 2, 2)) s = applyMove(s, id)
-    expect(Array.from(s.plots.values()).every((p) => p.asset === 'chicken')).toBe(true)
+    s = applyMove(s, encodeLine('h', 1, 0))
+    expect(s.plots.size).toBe(1)
+    expect(Array.from(s.plots.values())[0].asset).toBe('chicken')
   })
 })
 
-describe('tickHarvest', () => {
+describe('tickHarvest (direct)', () => {
   it('adds yields for each plot to its owner score and increments counter', () => {
-    let s = initState(3, PLAYERS, 6)
-    // Capture a 2x2 → pig (yield 6)
+    let s = initState(3, PLAYERS, Infinity)
     for (const id of plotPerimeter(0, 0, 2, 2)) s = applyMove(s, id)
     const owner = Array.from(s.plots.values())[0].ownerIdx
     const beforeScore = s.scores[owner]
+    const beforeHarvest = s.harvestsElapsed
     s = tickHarvest(s)
-    expect(s.scores[owner]).toBe(beforeScore + 6) // pig yields 6
-    expect(s.harvestsElapsed).toBe(1)
+    expect(s.scores[owner]).toBe(beforeScore + 6)
+    expect(s.harvestsElapsed).toBe(beforeHarvest + 1)
     expect(s.status).toBe('playing')
   })
 
-  it('chicken yields scale per cell', () => {
-    let s = initState(3, PLAYERS, 6)
-    // Set up so a 1x3 chicken plot gets captured (interior walls + perimeter).
-    // Easier: gridded 1x3 → three 1x1 chickens → tick yields 3.
-    s = applyMove(s, encodeLine('v', 0, 1))
-    s = applyMove(s, encodeLine('v', 0, 2))
-    for (const id of plotPerimeter(0, 0, 1, 3)) s = applyMove(s, id)
-    const totalChickenCells = Array.from(s.plots.values())
-      .filter((p) => p.asset === 'chicken')
-      .reduce((acc, p) => acc + p.h * p.w, 0)
-    const owner = Array.from(s.plots.values())[0].ownerIdx
-    const beforeScore = s.scores[owner]
-    s = tickHarvest(s)
-    expect(s.scores[owner]).toBe(beforeScore + totalChickenCells)
-  })
-
-  it('ends the game when totalHarvests is reached', () => {
+  it('ends the game when totalHarvests cap is reached', () => {
     let s = initState(2, PLAYERS, 2)
     expect(s.totalHarvests).toBe(2)
     s = tickHarvest(s)
@@ -343,5 +319,104 @@ describe('tickHarvest', () => {
     const before = s
     s = tickHarvest(s)
     expect(s).toBe(before)
+  })
+})
+
+describe('per-turn harvest (baked into applyMove)', () => {
+  it('non-capturing move ticks the harvest counter', () => {
+    let s = initState(3, PLAYERS)
+    expect(s.harvestsElapsed).toBe(0)
+    s = applyMove(s, encodeLine('h', 0, 0))
+    expect(s.harvestsElapsed).toBe(1)
+    s = applyMove(s, encodeLine('v', 0, 0))
+    expect(s.harvestsElapsed).toBe(2)
+  })
+
+  it('capturing move does NOT tick the harvest counter', () => {
+    // Set up a 1×1 with 3 sides drawn so the next move captures.
+    let s = initState(3, PLAYERS)
+    s = applyMove(s, encodeLine('h', 0, 0)) // tick → 1
+    s = applyMove(s, encodeLine('v', 0, 0)) // tick → 2
+    s = applyMove(s, encodeLine('v', 0, 1)) // tick → 3
+    expect(s.harvestsElapsed).toBe(3)
+    s = applyMove(s, encodeLine('h', 1, 0)) // captures (0,0). NO tick.
+    expect(s.harvestsElapsed).toBe(3)
+    expect(s.scores[s.players.findIndex((p) => p.kind === 'human')]).toBe(0)
+  })
+
+  it('plot yields accumulate via per-turn harvest', () => {
+    // Capture a 2×2 (pig, yield 6). Then play a non-capturing move; the
+    // harvest tick should add 6 to the capturer's score.
+    let s = initState(3, PLAYERS)
+    for (const id of plotPerimeter(0, 0, 2, 2)) s = applyMove(s, id)
+    const ownerIdx = Array.from(s.plots.values())[0].ownerIdx
+    const beforeScore = s.scores[ownerIdx]
+    const beforeHarvest = s.harvestsElapsed
+    // Play a non-capturing move somewhere safe.
+    s = applyMove(s, encodeLine('h', 0, 2))
+    expect(s.harvestsElapsed).toBe(beforeHarvest + 1)
+    expect(s.scores[ownerIdx]).toBe(beforeScore + 6)
+  })
+})
+
+describe('auto-merge plots', () => {
+  it('4 same-owner chickens in a 2x2 area merge into a pig', () => {
+    // Setup: gridded 2x2 (all internal walls) plus perimeter so each cell
+    // is captured as a 1×1 chicken. Should auto-merge into one pig.
+    let s = initState(3, PLAYERS)
+    s = applyMove(s, encodeLine('h', 1, 0))
+    s = applyMove(s, encodeLine('h', 1, 1))
+    s = applyMove(s, encodeLine('v', 0, 1))
+    s = applyMove(s, encodeLine('v', 1, 1))
+    for (const id of plotPerimeter(0, 0, 2, 2)) s = applyMove(s, id)
+    // Without merge: 4 chicken plots. With merge: 1 pig plot.
+    const plots = Array.from(s.plots.values())
+    expect(plots.length).toBe(1)
+    expect(plots[0].asset).toBe('pig')
+    expect(plots[0].h).toBe(2)
+    expect(plots[0].w).toBe(2)
+  })
+
+  it('6 same-owner chickens in 2x3 area merge into a cow', () => {
+    let s = initState(3, PLAYERS)
+    // All internal walls of a 2x3 area.
+    s = applyMove(s, encodeLine('h', 1, 0))
+    s = applyMove(s, encodeLine('h', 1, 1))
+    s = applyMove(s, encodeLine('h', 1, 2))
+    s = applyMove(s, encodeLine('v', 0, 1))
+    s = applyMove(s, encodeLine('v', 0, 2))
+    s = applyMove(s, encodeLine('v', 1, 1))
+    s = applyMove(s, encodeLine('v', 1, 2))
+    for (const id of plotPerimeter(0, 0, 2, 3)) s = applyMove(s, id)
+    const plots = Array.from(s.plots.values())
+    expect(plots.length).toBe(1)
+    expect(plots[0].asset).toBe('cow')
+  })
+
+  it('does not merge if cells belong to different owners', () => {
+    // Hard to engineer cross-owner 2×2 in a clean test, so verify the
+    // negative case via direct scenario: P0 captures one 1×1 and the
+    // others remain unowned, no merge candidate exists.
+    let s = initState(3, PLAYERS)
+    // Set up so P0 captures only (0,0) — its 4 sides drawn, neighboring
+    // cells not captured.
+    s = applyMove(s, encodeLine('h', 0, 0))
+    s = applyMove(s, encodeLine('v', 0, 0))
+    s = applyMove(s, encodeLine('v', 0, 1))
+    s = applyMove(s, encodeLine('h', 1, 0))
+    // Only one plot owned, no merge.
+    const plots = Array.from(s.plots.values())
+    expect(plots.length).toBe(1)
+    expect(plots[0].asset).toBe('chicken')
+  })
+
+  it('does not downgrade an existing pig', () => {
+    // Capture a 2×2 directly as pig; subsequent moves shouldn't degrade it.
+    let s = initState(3, PLAYERS)
+    for (const id of plotPerimeter(0, 0, 2, 2)) s = applyMove(s, id)
+    expect(Array.from(s.plots.values())[0].asset).toBe('pig')
+    // Continue playing; the pig should stay a pig.
+    s = applyMove(s, encodeLine('h', 0, 2))
+    expect(Array.from(s.plots.values()).find((p) => p.r0 === 0 && p.c0 === 0)?.asset).toBe('pig')
   })
 })

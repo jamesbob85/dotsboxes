@@ -43,24 +43,20 @@ function playGame(size: number, players: PlayerSpec[], r: () => number) {
 }
 
 describe('self-play (random vs random)', () => {
-  it('200 games of 2-player size 5 all terminate with valid scores', () => {
+  it('200 games of 2-player size 5 all terminate with all cells claimed', () => {
     for (let i = 0; i < 200; i++) {
       const r = rng(i + 1)
       const s = playGame(5, TWO, r)
-      const total = s.scores.reduce((a, b) => a + b, 0)
-      expect(total).toBe(25)
       expect(s.boxOwner.size).toBe(25)
-      // With variable plots the game can end before all lines are drawn,
-      // so don't assert line count.
+      // Total scores include capture cells + accumulated harvest yields,
+      // so we don't assert a specific total.
     }
   })
 
-  it('100 games of 4-player size 4 all terminate with valid scores', () => {
+  it('100 games of 4-player size 4 all terminate with all cells claimed', () => {
     for (let i = 0; i < 100; i++) {
       const r = rng(i + 1000)
       const s = playGame(4, FOUR, r)
-      const total = s.scores.reduce((a, b) => a + b, 0)
-      expect(total).toBe(16)
       expect(s.boxOwner.size).toBe(16)
     }
   })
