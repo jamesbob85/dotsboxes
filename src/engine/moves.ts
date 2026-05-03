@@ -1,4 +1,6 @@
-import { GameState, LineId, BoxId, LineKind } from './types'
+import { GameState, LineId, BoxId, LineKind, PlotId } from './types'
+
+export const MAX_PLOT_DIM = 3
 
 export function encodeLine(kind: LineKind, r: number, c: number): LineId {
   return `${kind}:${r}:${c}`
@@ -18,6 +20,10 @@ export function decodeBox(id: BoxId): { r: number; c: number } {
   return { r, c }
 }
 
+export function encodePlot(r0: number, c0: number, h: number, w: number): PlotId {
+  return `${r0}:${c0}:${h}:${w}`
+}
+
 export function isLineInBounds(size: number, id: LineId): boolean {
   const { kind, r, c } = decodeLine(id)
   if (kind === 'h') return r >= 0 && r <= size && c >= 0 && c < size
@@ -26,17 +32,6 @@ export function isLineInBounds(size: number, id: LineId): boolean {
 
 export function isValidMove(state: GameState, id: LineId): boolean {
   return isLineInBounds(state.size, id) && !state.lines.has(id)
-}
-
-export function allLines(size: number): LineId[] {
-  const out: LineId[] = []
-  for (let r = 0; r <= size; r++) {
-    for (let c = 0; c < size; c++) out.push(encodeLine('h', r, c))
-  }
-  for (let r = 0; r < size; r++) {
-    for (let c = 0; c <= size; c++) out.push(encodeLine('v', r, c))
-  }
-  return out
 }
 
 export function validMoves(state: GameState): LineId[] {
@@ -57,7 +52,6 @@ export function validMoves(state: GameState): LineId[] {
   return out
 }
 
-// Box (r, c) sides: top=h:r:c, bottom=h:r+1:c, left=v:r:c, right=v:r:c+1
 export function boxSides(r: number, c: number): LineId[] {
   return [
     encodeLine('h', r, c),
@@ -67,16 +61,38 @@ export function boxSides(r: number, c: number): LineId[] {
   ]
 }
 
-// Boxes adjacent to a given line (1 or 2 of them)
-export function adjacentBoxes(id: LineId, size: number): { r: number; c: number }[] {
-  const { kind, r, c } = decodeLine(id)
-  const out: { r: number; c: number }[] = []
-  if (kind === 'h') {
-    if (r > 0) out.push({ r: r - 1, c })
-    if (r < size) out.push({ r, c })
-  } else {
-    if (c > 0) out.push({ r, c: c - 1 })
-    if (c < size) out.push({ r, c })
+// Lines on the perimeter of a plot at (r0, c0) with height h × width w.
+export function plotPerimeter(r0: number, c0: number, h: number, w: number): LineId[] {
+  const out: LineId[] = []
+  for (let c = c0; c < c0 + w; c++) {
+    out.push(encodeLine('h', r0, c))
+    out.push(encodeLine('h', r0 + h, c))
+  }
+  for (let r = r0; r < r0 + h; r++) {
+    out.push(encodeLine('v', r, c0))
+    out.push(encodeLine('v', r, c0 + w))
+  }
+  return out
+}
+
+// Lines interior to a plot (would split it into smaller regions).
+export function plotInterior(r0: number, c0: number, h: number, w: number): LineId[] {
+  const out: LineId[] = []
+  // horizontal interior dividers (between rows)
+  for (let r = r0 + 1; r < r0 + h; r++) {
+    for (let c = c0; c < c0 + w; c++) out.push(encodeLine('h', r, c))
+  }
+  // vertical interior dividers (between cols)
+  for (let r = r0; r < r0 + h; r++) {
+    for (let c = c0 + 1; c < c0 + w; c++) out.push(encodeLine('v', r, c))
+  }
+  return out
+}
+
+export function plotCells(r0: number, c0: number, h: number, w: number): BoxId[] {
+  const out: BoxId[] = []
+  for (let r = r0; r < r0 + h; r++) {
+    for (let c = c0; c < c0 + w; c++) out.push(encodeBox(r, c))
   }
   return out
 }

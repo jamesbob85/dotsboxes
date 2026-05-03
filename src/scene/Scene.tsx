@@ -2,7 +2,7 @@ import { OrthographicCamera } from '@react-three/drei'
 import { useThree } from '@react-three/fiber'
 import { useMemo } from 'react'
 import Lines from './Lines'
-import Boxes from './Boxes'
+import Plots from './Plots'
 import { GameState, LineId } from '../engine/types'
 import { dotPos } from './coords'
 
@@ -47,7 +47,7 @@ export default function Scene({ state, onLineClick, isHumanTurn, currentColor }:
 
       <group scale={[1, 1, Z_STRETCH]}>
         <PaperPad size={state.size} />
-        <Boxes state={state} />
+        <Plots state={state} />
         <Lines
           state={state}
           onClick={onLineClick}

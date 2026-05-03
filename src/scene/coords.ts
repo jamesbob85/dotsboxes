@@ -26,3 +26,15 @@ export function boxCenter(size: number, r: number, c: number): [number, number, 
   const half = size / 2
   return [c + 0.5 - half, 0, r + 0.5 - half]
 }
+
+// Center of a plot at (r0, c0) with size h × w.
+export function plotCenter(
+  size: number,
+  r0: number,
+  c0: number,
+  h: number,
+  w: number,
+): [number, number, number] {
+  const half = size / 2
+  return [c0 + w / 2 - half, 0, r0 + h / 2 - half]
+}

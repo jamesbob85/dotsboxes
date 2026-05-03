@@ -50,7 +50,8 @@ describe('self-play (random vs random)', () => {
       const total = s.scores.reduce((a, b) => a + b, 0)
       expect(total).toBe(25)
       expect(s.boxOwner.size).toBe(25)
-      expect(s.lines.size).toBe(2 * 5 * (5 + 1))
+      // With variable plots the game can end before all lines are drawn,
+      // so don't assert line count.
     }
   })
 
@@ -62,6 +63,14 @@ describe('self-play (random vs random)', () => {
       expect(total).toBe(16)
       expect(s.boxOwner.size).toBe(16)
     }
+  })
+
+  it('plot accounting is consistent with cell ownership', () => {
+    const r = rng(7)
+    const s = playGame(5, TWO, r)
+    let cellsFromPlots = 0
+    for (const p of s.plots.values()) cellsFromPlots += p.h * p.w
+    expect(cellsFromPlots).toBe(s.boxOwner.size)
   })
 
   it('all moves played by bots are valid (sampled)', () => {

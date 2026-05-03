@@ -1,40 +1,49 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Mesh } from 'three'
-import { GameState } from '../engine/types'
-import { decodeBox } from '../engine/moves'
-import { boxCenter } from './coords'
+import { GameState, Plot } from '../engine/types'
+import { plotCenter } from './coords'
 
 interface Props {
   state: GameState
 }
 
-const POP_DURATION_MS = 220
-const BOX_Y = 0.018 // above pad top (0.01), below drawn lines (0.025+)
+const POP_DURATION_MS = 240
+const PLOT_Y = 0.018
 
-export default function Boxes({ state }: Props) {
-  const captured = useMemo(() => Array.from(state.boxOwner.entries()), [state.boxOwner])
+export default function Plots({ state }: Props) {
+  const plots = useMemo(() => Array.from(state.plots.values()), [state.plots])
   return (
     <>
-      {captured.map(([id, ownerIdx]) => {
-        const { r, c } = decodeBox(id)
-        const pos = boxCenter(state.size, r, c)
-        const color = state.players[ownerIdx].color
-        return <CapturedBox key={id} position={[pos[0], BOX_Y, pos[2]]} color={color} />
+      {plots.map((plot) => {
+        const color = state.players[plot.ownerIdx].color
+        return (
+          <CapturedPlot
+            key={plot.id}
+            plot={plot}
+            size={state.size}
+            color={color}
+          />
+        )
       })}
     </>
   )
 }
 
-function CapturedBox({
-  position,
+function CapturedPlot({
+  plot,
+  size,
   color,
 }: {
-  position: [number, number, number]
+  plot: Plot
+  size: number
   color: string
 }) {
   const ref = useRef<Mesh>(null)
   const startTime = useRef<number>(performance.now())
+
+  const center = plotCenter(size, plot.r0, plot.c0, plot.h, plot.w)
+  const dims: [number, number] = [plot.w - 0.06, plot.h - 0.06]
 
   useFrame(() => {
     if (!ref.current) return
@@ -49,11 +58,11 @@ function CapturedBox({
   return (
     <mesh
       ref={ref}
-      position={position}
+      position={[center[0], PLOT_Y, center[2]]}
       rotation={[-Math.PI / 2, 0, 0]}
       scale={[0.001, 1, 0.001]}
     >
-      <planeGeometry args={[0.94, 0.94]} />
+      <planeGeometry args={dims} />
       <meshBasicMaterial color={color} transparent opacity={0.78} />
     </mesh>
   )
