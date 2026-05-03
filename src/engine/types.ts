@@ -22,4 +22,5 @@ export interface GameState {
   boxOwner: Map<BoxId, number>
   status: 'playing' | 'gameover'
   lastCapturedBy: number | null
+  lastLineId: LineId | null
 }

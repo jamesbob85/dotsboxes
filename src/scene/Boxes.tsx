@@ -10,6 +10,7 @@ interface Props {
 }
 
 const POP_DURATION_MS = 220
+const BOX_Y = 0.018 // above pad top (0.01), below drawn lines (0.025+)
 
 export default function Boxes({ state }: Props) {
   const captured = useMemo(() => Array.from(state.boxOwner.entries()), [state.boxOwner])
@@ -19,7 +20,7 @@ export default function Boxes({ state }: Props) {
         const { r, c } = decodeBox(id)
         const pos = boxCenter(state.size, r, c)
         const color = state.players[ownerIdx].color
-        return <CapturedBox key={id} position={[pos[0], 0.015, pos[2]]} color={color} />
+        return <CapturedBox key={id} position={[pos[0], BOX_Y, pos[2]]} color={color} />
       })}
     </>
   )
@@ -39,7 +40,6 @@ function CapturedBox({
     if (!ref.current) return
     const elapsed = performance.now() - startTime.current
     const t = Math.min(1, elapsed / POP_DURATION_MS)
-    // Ease-out back: gentle overshoot for a satisfying pop.
     const c1 = 1.4
     const c3 = c1 + 1
     const eased = 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2)

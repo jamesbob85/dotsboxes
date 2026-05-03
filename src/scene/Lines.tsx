@@ -1,14 +1,19 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import { useFrame } from '@react-three/fiber'
+import { Mesh, MeshBasicMaterial } from 'three'
 import { GameState, LineId } from '../engine/types'
 import { decodeLine, encodeLine } from '../engine/moves'
 import { hLineCenter, vLineCenter } from './coords'
 
 const LINE_LEN = 0.96
 const LINE_THICK = 0.14
-const LINE_Y = 0.03
+const LINE_HEIGHT = 0.05
+const LINE_Y = 0.025 + LINE_HEIGHT / 2
 
 const HIT_THICK = 0.4
 const HIT_HEIGHT = 0.4
+
+const HIGHLIGHT_DURATION_MS = 1500
 
 interface Props {
   state: GameState
@@ -47,6 +52,13 @@ export default function Lines({ state, onClick, isHumanTurn, currentColor }: Pro
           color={state.players[state.lineOwner.get(id) ?? 0].color}
         />
       ))}
+      {state.lastLineId && (
+        <LastLineHighlight
+          key={state.lastLineId}
+          id={state.lastLineId}
+          size={state.size}
+        />
+      )}
       {undrawn.map((id) => (
         <UndrawnLine
           key={id}
@@ -64,15 +76,41 @@ export default function Lines({ state, onClick, isHumanTurn, currentColor }: Pro
 function DrawnLine({ id, size, color }: { id: LineId; size: number; color: string }) {
   const { kind, r, c } = decodeLine(id)
   const pos = kind === 'h' ? hLineCenter(size, r, c) : vLineCenter(size, r, c)
-  const args: [number, number] =
-    kind === 'h' ? [LINE_LEN, LINE_THICK] : [LINE_THICK, LINE_LEN]
+  const args: [number, number, number] =
+    kind === 'h' ? [LINE_LEN, LINE_HEIGHT, LINE_THICK] : [LINE_THICK, LINE_HEIGHT, LINE_LEN]
   return (
-    <mesh
-      position={[pos[0], LINE_Y, pos[2]]}
-      rotation={[-Math.PI / 2, 0, 0]}
-    >
-      <planeGeometry args={args} />
-      <meshBasicMaterial color={color} />
+    <mesh position={[pos[0], LINE_Y, pos[2]]} castShadow receiveShadow>
+      <boxGeometry args={args} />
+      <meshStandardMaterial color={color} roughness={0.55} />
+    </mesh>
+  )
+}
+
+function LastLineHighlight({ id, size }: { id: LineId; size: number }) {
+  const { kind, r, c } = decodeLine(id)
+  const pos = kind === 'h' ? hLineCenter(size, r, c) : vLineCenter(size, r, c)
+  const ref = useRef<Mesh>(null)
+  const start = useRef(performance.now())
+
+  // Slightly oversize the highlight so it reads as a halo around the line.
+  const args: [number, number, number] =
+    kind === 'h'
+      ? [LINE_LEN * 1.04, LINE_HEIGHT + 0.04, LINE_THICK + 0.18]
+      : [LINE_THICK + 0.18, LINE_HEIGHT + 0.04, LINE_LEN * 1.04]
+
+  useFrame(() => {
+    if (!ref.current) return
+    const t = Math.min(1, (performance.now() - start.current) / HIGHLIGHT_DURATION_MS)
+    const eased = 1 - Math.pow(t, 2) // ease-in fade
+    const mat = ref.current.material as MeshBasicMaterial
+    mat.opacity = 0.7 * eased
+    if (eased <= 0) ref.current.visible = false
+  })
+
+  return (
+    <mesh ref={ref} position={[pos[0], LINE_Y, pos[2]]}>
+      <boxGeometry args={args} />
+      <meshBasicMaterial color={'#ffffff'} transparent opacity={0.7} />
     </mesh>
   )
 }
@@ -95,17 +133,22 @@ function UndrawnLine({
   const [hover, setHover] = useState(false)
   const showHover = hover && interactive
 
-  const previewArgs: [number, number] =
-    kind === 'h' ? [LINE_LEN, LINE_THICK] : [LINE_THICK, LINE_LEN]
+  const previewArgs: [number, number, number] =
+    kind === 'h' ? [LINE_LEN, LINE_HEIGHT, LINE_THICK] : [LINE_THICK, LINE_HEIGHT, LINE_LEN]
   const hitArgs: [number, number, number] =
     kind === 'h' ? [LINE_LEN, HIT_HEIGHT, HIT_THICK] : [HIT_THICK, HIT_HEIGHT, LINE_LEN]
 
   return (
     <group position={[pos[0], 0, pos[2]]}>
       {showHover && (
-        <mesh position={[0, LINE_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={previewArgs} />
-          <meshBasicMaterial color={previewColor} transparent opacity={0.45} />
+        <mesh position={[0, LINE_Y, 0]}>
+          <boxGeometry args={previewArgs} />
+          <meshStandardMaterial
+            color={previewColor}
+            transparent
+            opacity={0.55}
+            roughness={0.7}
+          />
         </mesh>
       )}
       <mesh

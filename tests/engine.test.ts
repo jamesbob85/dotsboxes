@@ -110,3 +110,22 @@ describe('boxSides', () => {
     expect(new Set(sides).size).toBe(4)
   })
 })
+
+describe('lastLineId tracking', () => {
+  it('starts null and updates after each move', () => {
+    let s = initState(2, PLAYERS)
+    expect(s.lastLineId).toBeNull()
+    s = applyMove(s, encodeLine('h', 0, 0))
+    expect(s.lastLineId).toBe(encodeLine('h', 0, 0))
+    s = applyMove(s, encodeLine('v', 0, 0))
+    expect(s.lastLineId).toBe(encodeLine('v', 0, 0))
+  })
+
+  it('rejected moves do not update lastLineId', () => {
+    let s = initState(2, PLAYERS)
+    s = applyMove(s, encodeLine('h', 0, 0))
+    const before = s.lastLineId
+    s = applyMove(s, encodeLine('h', 0, 0)) // duplicate
+    expect(s.lastLineId).toBe(before)
+  })
+})

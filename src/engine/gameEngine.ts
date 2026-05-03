@@ -12,6 +12,7 @@ export function initState(size: number, players: PlayerSpec[]): GameState {
     boxOwner: new Map(),
     status: 'playing',
     lastCapturedBy: null,
+    lastLineId: null,
   }
 }
 
@@ -57,6 +58,7 @@ export function applyMove(state: GameState, lineId: LineId): GameState {
     current: next,
     status,
     lastCapturedBy: captured ? state.current : null,
+    lastLineId: lineId,
   }
 }
 
