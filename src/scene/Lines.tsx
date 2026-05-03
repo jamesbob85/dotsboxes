@@ -154,7 +154,6 @@ function UndrawnLine({
       <mesh
         position={[0, HIT_HEIGHT / 2, 0]}
         onPointerOver={(e) => {
-          if (!interactive) return
           e.stopPropagation()
           setHover(true)
         }}
